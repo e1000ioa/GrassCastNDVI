@@ -1,0 +1,217 @@
+---
+title: "Grass-Cast Download from Ag Data Commons"
+date: "February 15, 2021"
+output: 
+  html_document:
+    toc: true 
+    toc_float: 
+      collapsed: false
+      smooth_scroll: false
+latex_engine: xelatex
+header-includes:
+- \usepackage{fontspec}
+- \setmainfont{Georgia}
+fig.width: 20
+fig.height: 12
+---    
+  
+# Please read this first # 
+  * This script was written by Chris Dorich (chris.dorich@colostate.edu) to provide a way to download data from the GrassCast Database that is archived on [Ag Data Commons](https://data.nal.usda.gov/dataset/grasscast-database). We will continue to update this Database on a roughly annual basis as is possible.               
+  * Last updated on February XX, 2021.       
+  * The GrassCast project website can be found [here](https://grasscast.unl.edu/).      
+  * Scripts associated with the GrassCast project can also be found at [Github](https://github.com/CDorich/GrassCast_DB).     
+    \           
+    
+Please be sure to cite the Ag Data Commons link/DOI (citation may update with new versions/info - (dataset) Dorich, Christopher D.; Derner, Justin; Torell, Greg; Volesky, Jerry; Brennan, Jameson; Archer, David; Blair, John; Knapp, Alan; Nippert, Jesse; Hartnett, David; McClaran, Mitchel; Maurer, Greg; Moore, Douglas; Clark, Pat; Parton, William; Peck, Dannele; Kramer, Lauren; Smith, William Kolby; Elias, Emile; Fuchs, Brian. (unpublished). Grass-Cast Database - Data on aboveground net primary productivity (ANPP), climate data, NDVI, and cattle weight gain for Western U.S. rangelands. Ag Data Commons. https://data.nal.usda.gov/dataset/grass-cast-database-data-aboveground-net-primary-productivity-anpp-climate-data-ndvi-and-cattle-weight-gain-western-us-rangelands. Accesse) when you use this dataset.           
+  \         
+  
+# Publications using GrassCast        
+  * [Chen et al., 2019](https://esajournals.onlinelibrary.wiley.com/doi/full/10.1002/ecs2.2889) on the original regressions.         
+  * [Hartman et al., 2020](https://esajournals.onlinelibrary.wiley.com/doi/full/10.1002/ecs2.3280) about the technology-method behind GrassCast.        
+
+```{r setup, eval=T, include=F }
+knitr::opts_chunk$set(echo = FALSE)
+htmltools::tagList(rmarkdown::html_dependency_font_awesome())
+
+# this only needs to be run the first time. Switch eval = T to eval = F after running the first time 
+
+## First specify the packages of interest
+  # these are not all used within this script so you can reduce this list if desired, but are generally good packages to have 
+  # grasscast team does not maintain these packages and is not responsible for any issues that may occur with download 
+packages = c("tidyverse", "plyr","readxl","plotly","gridExtra","data.table","DT","leaflet",
+             'ggpubr','RCurl','rmarkdown','lubridate','rgeos','rgdal','maptools','knitr',
+             "ggplot2",'cowplot','RColorBrewer','mapview','tmap','sf','raster','sp')
+
+# library(cowplot) # get_legend
+# 
+# 
+# # mapping # 
+# library(mapview)
+# library(tmap) 
+# library(sf)
+# library(raster)
+# library(leaflet)
+# library(sp)
+# library(rgeos)
+# library(rgdal)
+# library(maptools)
+
+
+## Now load or install&load all
+package.check <- lapply(
+  packages,
+  FUN = function(x) {
+    if (!require(x, character.only = TRUE)) {
+      install.packages(x, dependencies = TRUE)
+      library(x, character.only = TRUE)
+    }
+  }
+)
+
+```      
+  \      
+  
+
+# Sites within the Grass-Cast Database        
+```{r, echo=F, include=T, warning=F, message=F }
+
+getwd() # find where R/Rstudio is looking for files 
+setwd("C:\\users\\aguilarcubilla\\iCloudDrive\\Documents\\Research\\GrassCast\\R_access_script") # set the working directory to where you download Ag Data Commons Grass-Cast DB files to 
+
+## Basic summary info on sites 
+sitelist <- read_excel("Grass-Cast_sitelist.xlsx", sheet = 'sitelist' ) 
+ 
+sitelist[,c('Lat','Lon')] <- sapply(sitelist[,c('Lat','Lon')], as.numeric )
+
+#    sitelist <- subset(sitelist, is.na(sitelist$State)==F )
+#   sitelist[,c('Lat','Lon')] <- round(sitelist[,c('Lat','Lon')],3)
+#   
+# sitelist$Abbrev <- as.factor(sitelist$Abbrev)
+# sitelist$Location <- as.factor(sitelist$Location)
+# sitelist$State <- as.factor(sitelist$State)
+# sitelist$Field.pasture <- as.factor(sitelist$Field.pasture)
+# sitelist$`NPP category` <- as.factor(sitelist$`NPP category`)
+
+  leaflet() %>% addTiles(group = "OSM (default)") %>% 
+  addProviderTiles(providers$Esri.WorldImagery, group = "Esri World Imagery") %>%
+  addAwesomeMarkers(lng = sitelist$Lon, lat = sitelist$Lat, 
+                    label = paste( as.character(sitelist$Location) ), group = 'Sites' )
+                    
+  
+  datatable(sitelist, caption = "Site level information for sites in Grass-Cast Database" ) %>% 
+    formatRound(columns=c('Lat','Lon'), digits = 3 )
+
+```       
+  \       
+ 
+# Upload Data          
+
+        
+## ANPP   
+```{r, echo=F, include=T, warning=F, message=F }
+ 
+## ANPP data 
+ANPP <- read_excel("ANPP.xlsx", sheet = 'ANPP' ) 
+ANPP$date <- as.Date(as.numeric(ANPP$date), origin = "1899-12-30" )
+ANPP_meta <- read_excel("ANPP.xlsx", sheet = 'readme' ) 
+
+  datatable(ANPP, caption = "ANPP measurements for Grass-Cast ANPP sites " ) %>% 
+    formatRound(columns=c('ANPP','ANPP.sd','Biomass','Biomass.sd','woody','woody.sd',
+                          'Dead','Dead.sd','fulltime'), digits = 3 )
+  datatable(ANPP_meta, caption = "ANPP meta-data " )
+
+```        
+  \              
+           
+## NDVI        
+```{r, echo=F, include=T, warning=F, message=F }
+ 
+## NDVI data 
+NDVI <- read_excel("NDVI.xlsx", sheet = 'data' ) 
+NDVI_meta <- read_excel("NDVI.xlsx", sheet = 'readme' ) 
+
+  datatable(NDVI, caption = "NDVI data summaries for sites \n *note* this is just a 'head' to give an idea and save space in the markdown document" ) 
+  datatable(NDVI_meta, caption = "NDVI meta-data" )
+
+
+NDVIraw <- read_excel("NDVI_raw.xlsx", sheet = 'data' ) 
+NDVIraw_meta <- read_excel("NDVI_raw.xlsx", sheet = 'readme' ) 
+
+  datatable(head(NDVIraw), caption = "Raw NDVI measurements for sites \n *note* this is just a 'head' to give an idea and save space in the markdown document" ) %>% 
+    formatRound(columns=c('time'), digits = 3 ) 
+  datatable(NDVIraw_meta, caption = "Raw NDVI meta-data" )
+
+```      
+  \        
+
+## Cattle weight gain data   
+```{r, echo=F, include=T, warning=F, message=F }
+   
+
+Wgain <- read_excel("Cattle_weight_gains.xlsx", sheet = 'weightall' ) 
+  
+  Wgain$end_date <- as.Date(as.numeric(Wgain$end_date), origin = "1899-12-30" ) # weird date origin..
+  Wgain$start_date <- as.Date(as.numeric(Wgain$start_date), origin = "1899-12-30" )
+  
+Wgain_meta <- read_excel("Cattle_weight_gains.xlsx", sheet = 'readme' ) 
+
+  datatable(Wgain, caption = "Cattle weight gain data sets" ) %>%
+    formatRound(columns=c("weight_kg_season", "weight_kg_day", "weight_kg_day_sd", "weight_kg_ha",
+                          "start_weight_acre", "start_weight"), digits = 3 )
+  datatable(Wgain_meta, caption = "cattle weight gain meta-data" )
+
+
+```       
+  \        
+
+## Merge datasets           
+```{r, message = F, warning=F, fig.width=12, eval = T }
+
+# ANPP to NDVI
+compdf <- merge(ANPP, unique(NDVI[,c('year','Site','GScor')]), 
+                by.x= c('year','site'), by.y= c('year','Site'),
+                all.x=F, all.y=F )
+  # dim(ANPP); dim(unique(NDVI[,c('year','Site','GScor')])); dim(compdf); 
+
+# to AET and precip
+# compdf <- merge(compdf, unique(wthaet[,c('year','site','AET_gs','daycent_precip')]), 
+#                by= c('year','site'), # by.y= c('year','Site'),
+#                all.x=F, all.y=F )
+# dim(ANPP); dim(unique(NDVI[,c('year','Site','GScor')])); dim(compdf); 
+
+# to cattle weight gain 
+compdf <- merge(compdf, Wgain[,c('year','site','grazing.treatment',
+              'weight_kg_season', 'weight_kg_day','weight_kg_ha','start_weight_acre')], 
+                by= c('year','site','grazing.treatment'), # by.y= c('year','Site'),
+                all.x=F, all.y=F )
+# dim(compdf); dim(Wgain[,c('year','site','grazing.treatment',
+#              'weight_kg_season', 'weight_kg_day','weight_kg_ha','start_weight_acre')] );  
+
+compdf$fullsite <- paste(compdf$site, compdf$grazing.treatment, sep=" " )
+compdf$fullsite <- ifelse(is.na(compdf$fullsite)==T, paste(compdf$site, compdf$subsite, sep=" " ) , compdf$fullsite) 
+
+
+```     
+  \      
+  
+## Save 
+```{r}
+
+# ANPP - ANPP data set 
+# NDVI - seasonal NDVI values 
+# NDVIraw - raw NDVI values 
+# Wgain - cattle weight gain data 
+    # wthaet - weather data for the sites  *not currently included, but will in a future upload*
+
+# save - make sure you are saving to your preferred location getwd() or add pathway into save below or setwd() above. 
+  # save.image('Grass-Cast_Data.RData' )
+  # 
+
+
+
+
+```    
+  \    
+
+Per guidance on Ag Data Commons and following basic scientific reference/credit systems please cite accordingly. If using the data please cite the Ag Data Commons [DOI](), GrassCast publications where appropriate, as well as the original data sources and original data publications. Original DOIs and publications can be found in the [Grasscast Sitelist]().Please do not hesitate to contact chris.dorich@colostate.edu with questions or clarification.                    
+
